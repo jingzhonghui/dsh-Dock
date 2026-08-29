@@ -1,0 +1,38 @@
+appId: com.dshdesktop.app
+productName: DSH Desktop
+copyright: Copyright © 2025 dsh-desktop
+directories:
+  buildResources: resources
+  output: release
+files:
+  - out/**
+asar: true
+npmRebuild: false
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: resources/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  shortcutName: DSH Desktop
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  category: public.app-category.developer-tools
+  icon: resources/icon.png
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: resources/icon.png
+  category: Development
+  maintainer: dsh-desktop
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
