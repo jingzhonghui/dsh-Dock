@@ -26,6 +26,8 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
+    // Expose resources/ (favicon + app icon) as static assets at /…
+    publicDir: resolve('resources'),
     plugins: [react()]
   }
 })

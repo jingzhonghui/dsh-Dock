@@ -1,4 +1,4 @@
-# DSH Desktop
+# DSHDock
 
 DeepSeek Harness（dsh）的跨平台桌面壳（wrapper）—— 一个"DSH 专用浏览器"。
 

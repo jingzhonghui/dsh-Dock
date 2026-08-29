@@ -9,7 +9,7 @@ let dir: string
 let store: EndpointStore
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'dsh-desktop-test-'))
+  dir = await mkdtemp(join(tmpdir(), 'dsh-dock-test-'))
   store = new EndpointStore(join(dir, 'endpoints.json'))
 })
 

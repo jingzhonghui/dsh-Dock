@@ -1,6 +1,6 @@
-appId: com.dshdesktop.app
-productName: DSH Desktop
-copyright: Copyright © 2025 dsh-desktop
+appId: com.dshdock.app
+productName: DSHDock
+copyright: Copyright © 2025 dsh-dock
 directories:
   buildResources: resources
   output: release
@@ -19,7 +19,7 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
-  shortcutName: DSH Desktop
+  shortcutName: DSHDock
 mac:
   target:
     - target: dmg
@@ -34,6 +34,6 @@ linux:
     - deb
   icon: resources/icon.png
   category: Development
-  maintainer: dsh-desktop
+  maintainer: dsh-dock
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/

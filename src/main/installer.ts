@@ -19,6 +19,8 @@ export interface InstallOptions {
   spec?: string
   /** Called with each line of npm output. */
   onOutput?: (line: string) => void
+  /** Abort to terminate the npm child process (user pressed "stop"). */
+  signal?: AbortSignal
 }
 
 const PERMISSION_HINTS: Array<[RegExp, string]> = [
@@ -82,6 +84,23 @@ export async function installDshGlobal(opts: InstallOptions = {}): Promise<Insta
       if (buffer.trim()) onOutput(buffer.trim())
       resolve({ ok: code === 0, code, hint: code === 0 ? undefined : hint })
     })
+
+    // Registered after the close listener so an already-aborted signal that
+    // kills the child synchronously still resolves through 'close'.
+    const onAbort = (): void => {
+      try {
+        child.kill()
+      } catch {
+        /* already gone */
+      }
+    }
+    if (opts.signal) {
+      if (opts.signal.aborted) {
+        onAbort()
+      } else {
+        opts.signal.addEventListener('abort', onAbort, { once: true })
+      }
+    }
   })
 }
 

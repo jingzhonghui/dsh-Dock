@@ -12,6 +12,7 @@ const api: DshShellApi = {
   startLocal: () => ipcRenderer.invoke(IPC.StartLocal),
   stopLocal: () => ipcRenderer.invoke(IPC.StopLocal),
   installDsh: () => ipcRenderer.invoke(IPC.InstallDsh),
+  stopInstall: () => ipcRenderer.invoke(IPC.StopInstall),
   isInstalled: () => ipcRenderer.invoke(IPC.IsInstalled),
   listEndpoints: () => ipcRenderer.invoke(IPC.ListEndpoints),
   addEndpoint: (label: string, url: string) => ipcRenderer.invoke(IPC.AddEndpoint, label, url),

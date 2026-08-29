@@ -14,7 +14,7 @@ const isDev = !!process.env['ELECTRON_RENDERER_URL']
 
 /** Mirror key lifecycle events to stdout for debugging / smoke tests. */
 function debug(...args: unknown[]): void {
-  console.log('[dsh-desktop]', ...args)
+  console.log('[dsh-dock]', ...args)
 }
 
 // ── singleton ───────────────────────────────────────────────────────────────
@@ -35,6 +35,7 @@ let attachedTabId: string | null = null
 
 let chromeHeight = 36 // default chrome-bar height until the renderer reports the real one
 let quitting = false
+let installAbort: AbortController | null = null
 let settingsCache: Settings = { keepDshRunning: false }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -266,7 +267,7 @@ async function boot(): Promise<void> {
   if (await isDshInstalled()) {
     store.log({ source: 'shell', level: 'info', text: 'DSH 已安装但未运行，正在自动启动…' })
     debug('boot: installed but not running -> auto-start')
-    store.setGlobal({ busy: 'auto-starting' })
+    store.setGlobal({ installed: true, busy: 'auto-starting' })
     emitState()
     await autoStart(bootTab.id)
     return
@@ -274,7 +275,7 @@ async function boot(): Promise<void> {
 
   debug('boot: dsh not installed -> landing')
   store.patchTab(bootTab.id, { phase: 'landing' })
-  store.setGlobal({ landingReason: 'not-installed', message: '未在本机检测到 dsh。你可以安装它，或连接一个远程 / WSL 上的实例。' })
+  store.setGlobal({ installed: false, landingReason: 'not-installed', message: '未在本机检测到 dsh。你可以安装它，或连接一个远程 / WSL 上的实例。' })
   emitState()
 }
 
@@ -346,24 +347,44 @@ function registerIpc(): void {
     store.log({ source: 'shell', level: 'info', text: 'npm install -g @deepseek-ai/dsh@latest' })
     emitState()
 
-    const res = await installDshGlobal({
-      onOutput: (line) => store.log({ source: 'npm', level: 'info', text: line })
-    })
+    const ac = new AbortController()
+    installAbort = ac
+    try {
+      const res = await installDshGlobal({
+        signal: ac.signal,
+        onOutput: (line) => store.log({ source: 'npm', level: 'info', text: line })
+      })
 
-    if (res.ok) {
-      store.log({ source: 'npm', level: 'info', text: '安装成功，正在启动本机 DSH…' })
-      store.setGlobal({ busy: 'auto-starting', message: '安装成功，正在启动本机 DSH…' })
+      if (ac.signal.aborted) {
+        store.log({ source: 'npm', level: 'warn', text: '安装已停止。' })
+        store.setGlobal({ busy: 'none', message: '安装已停止。' })
+        emitState()
+        return { ok: false }
+      }
+
+      if (res.ok) {
+        store.log({ source: 'npm', level: 'info', text: '安装成功，正在启动本机 DSH…' })
+        store.setGlobal({ installed: true, busy: 'auto-starting', message: '安装成功，正在启动本机 DSH…' })
+        emitState()
+        const s = store.snapshot()
+        const targetTabId = store.getTab(s.activeTabId)?.id ?? s.bootTabId
+        await autoStart(targetTabId)
+        return { ok: true }
+      }
+      const message = res.hint ?? `npm 安装失败（exit code ${res.code ?? 'unknown'}）`
+      store.log({ source: 'npm', level: 'error', text: `安装失败：${message}` })
+      store.setGlobal({ busy: 'none', message })
       emitState()
-      const s = store.snapshot()
-      const targetTabId = store.getTab(s.activeTabId)?.id ?? s.bootTabId
-      await autoStart(targetTabId)
-      return { ok: true }
+      return { ok: false, message }
+    } finally {
+      if (installAbort === ac) installAbort = null
     }
-    const message = res.hint ?? `npm 安装失败（exit code ${res.code ?? 'unknown'}）`
-    store.log({ source: 'npm', level: 'error', text: `安装失败：${message}` })
-    store.setGlobal({ busy: 'none', message })
-    emitState()
-    return { ok: false, message }
+  })
+
+  ipcMain.handle(IPC.StopInstall, (e) => {
+    if (!guard(e)) return denied()
+    installAbort?.abort()
+    return store.snapshot()
   })
 
   // ── endpoints / settings ──
@@ -432,7 +453,7 @@ function createWindow(): void {
     minHeight: 480,
     show: false,
     autoHideMenuBar: true,
-    title: 'DSH Desktop',
+    title: 'DSHDock',
     backgroundColor: '#f6f7f9',
     icon: join(__dirname, '../../resources/icon.png'),
     webPreferences: {
@@ -501,7 +522,7 @@ function buildMenu(): void {
       role: 'help',
       submenu: [
         {
-          label: 'DSH Desktop',
+          label: 'DSHDock',
           click: () => {
             void shell.openExternal('https://github.com/deepseek-ai/deepseek-harness')
           }

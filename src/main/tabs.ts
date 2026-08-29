@@ -134,5 +134,8 @@ export class TabStore {
     const logs = [...this.logs, full]
     this.logs = logs.length > MAX_LOG_LINES ? logs.slice(logs.length - MAX_LOG_LINES) : logs
     for (const cb of this.logListeners) cb(full)
+    // Also broadcast the fresh snapshot so the renderer sees new log lines via
+    // the regular StateChanged push (which includes `logs`).
+    this.emit()
   }
 }

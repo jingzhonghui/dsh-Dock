@@ -38,7 +38,7 @@ export default function App(): JSX.Element {
     return (
       <div className="screen boot">
         <div className="spinner" />
-        <p>正在启动 DSH Desktop…</p>
+        <p>正在启动 DSHDock…</p>
       </div>
     )
   }
@@ -65,8 +65,8 @@ function renderContent(state: ShellState, active: TabState | undefined): JSX.Ele
       return (
         <div className="screen">
           <div className="hero">
-            <div className="logo">DSH</div>
-            <h1>DSH Desktop</h1>
+            <img className="logo" src="/icon.png" alt="DSHDock" />
+            <h1>DSHDock</h1>
             <p className="muted">{busyText(state)}</p>
           </div>
         </div>

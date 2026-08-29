@@ -11,6 +11,7 @@ export const IPC = {
   StartLocal: 'shell:start-local',
   StopLocal: 'shell:stop-local',
   InstallDsh: 'shell:install-dsh',
+  StopInstall: 'shell:stop-install',
   IsInstalled: 'shell:is-installed',
   ListEndpoints: 'shell:list-endpoints',
   AddEndpoint: 'shell:add-endpoint',
@@ -131,6 +132,7 @@ export interface DshShellApi {
   startLocal(): Promise<ShellState>
   stopLocal(): Promise<void>
   installDsh(): Promise<{ ok: boolean; message?: string }>
+  stopInstall(): Promise<void>
   isInstalled(): Promise<boolean>
   listEndpoints(): Promise<EndpointStoreData>
   addEndpoint(label: string, url: string): Promise<EndpointStoreData>

@@ -1,9 +1,9 @@
 {
-  "name": "dsh-desktop",
+  "name": "dsh-dock",
   "version": "0.1.0",
-  "description": "A cross-platform desktop shell (dedicated browser) for DeepSeek Harness (dsh). Detects a running local dsh, auto-starts an installed one, or lets you connect to a remote/WSL instance or install dsh.",
+  "description": "A cross-platform dock (dedicated browser) for DeepSeek Harness (dsh). Detects a running local dsh, auto-starts an installed one, or lets you connect to a remote/WSL instance or install dsh.",
   "main": "./out/main/index.js",
-  "author": "dsh-desktop",
+  "author": "dsh-dock",
   "license": "MIT",
   "private": true,
   "scripts": {

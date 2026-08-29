@@ -1,5 +1,8 @@
 import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('node:child_process', () => ({
@@ -14,7 +17,7 @@ vi.mock('../../src/main/detector', () => ({
 
 import { execFile, spawn } from 'node:child_process'
 import { probeEndpoint } from '../../src/main/detector'
-import { DshProcessManager } from '../../src/main/localDsh'
+import { DshProcessManager, isDshInstalled } from '../../src/main/localDsh'
 
 const mockSpawn = vi.mocked(spawn)
 const mockExecFile = vi.mocked(execFile)
@@ -102,5 +105,35 @@ describe('DshProcessManager.start', () => {
     expect(fakeChild.kill).not.toHaveBeenCalled()
     await manager.stop()
     expect(fakeChild.kill).toHaveBeenCalledWith('SIGTERM')
+  })
+})
+
+describe('isDshInstalled (package-manager detection)', () => {
+  /** execFile: `pnpm` answers with the given root; everything else fails. */
+  function mockOnlyPnpmRoot(root: string): void {
+    mockExecFile.mockImplementation(((_file: string, ...rest: unknown[]) => {
+      const cb = rest[rest.length - 1] as (err?: Error, res?: { stdout?: string }) => void
+      if (_file === 'pnpm') cb?.(undefined, { stdout: root })
+      else cb?.(new Error('mocked: command not found'))
+    }) as never)
+  }
+
+  it('detects dsh installed via pnpm even when the npm root is empty', async () => {
+    const tmp = await mkdtemp(join(tmpdir(), 'dsh-dock-pnpm-'))
+    try {
+      const pkgJson = join(tmp, '@deepseek-ai', 'dsh', 'package.json')
+      await mkdir(dirname(pkgJson), { recursive: true })
+      await writeFile(pkgJson, '{}', 'utf8')
+
+      mockOnlyPnpmRoot(tmp)
+      expect(await isDshInstalled()).toBe(true)
+    } finally {
+      await rm(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('reports not installed when neither a global root nor PATH has dsh', async () => {
+    mockOnlyPnpmRoot(tmpdir()) // pnpm root exists but holds no dsh
+    expect(await isDshInstalled()).toBe(false)
   })
 })

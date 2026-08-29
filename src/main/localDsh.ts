@@ -36,6 +36,18 @@ export interface StartLocalResult {
 const DSH_PKG_DIR = join('@deepseek-ai', 'dsh')
 const DSH_PKG_JSON_REL = join(DSH_PKG_DIR, 'package.json')
 
+/** Locate a command on PATH (no shell). Returns the first resolvable match or null. */
+export async function findOnPath(command: string): Promise<string | null> {
+  const cmd = process.platform === 'win32' ? 'where' : 'which'
+  try {
+    const { stdout } = await execFileAsync(cmd, [command], { timeout: 5000 })
+    const line = stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean)
+    return line && existsSync(line) ? line : null
+  } catch {
+    return null
+  }
+}
+
 /** Locate the system `node` executable (no shell involved). */
 export async function findNodeExecutable(): Promise<string | null> {
   const envCandidates = [process.env.npm_node_execpath, process.env.NODE].filter(
@@ -44,14 +56,7 @@ export async function findNodeExecutable(): Promise<string | null> {
   for (const c of envCandidates) {
     if (existsSync(c)) return c
   }
-  const cmd = process.platform === 'win32' ? 'where' : 'which'
-  try {
-    const { stdout } = await execFileAsync(cmd, ['node'], { timeout: 5000 })
-    const line = stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean)
-    return line && existsSync(line) ? line : null
-  } catch {
-    return null
-  }
+  return await findOnPath('node')
 }
 
 /**
@@ -84,17 +89,47 @@ export async function npmGlobalRoot(): Promise<string | null> {
   }
 }
 
-/** The npm global root where @deepseek-ai/dsh is (or would be) installed. */
+/**
+ * pnpm global root (e.g. ~/AppData/Local/pnpm/global/<n>/node_modules).
+ * pnpm installs packages in its own prefix, invisible to `npm root -g`.
+ */
+export async function pnpmGlobalRoot(): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('pnpm', ['root', '-g'], {
+      timeout: 15000,
+      shell: process.platform === 'win32'
+    })
+    const root = stdout.trim()
+    return root || null
+  } catch {
+    return null
+  }
+}
+
+/** All global install roots to search, across the package managers we support. */
+async function candidateGlobalRoots(): Promise<string[]> {
+  const roots = new Set<string>()
+  for (const r of [await npmGlobalRoot(), await pnpmGlobalRoot()]) {
+    if (r) roots.add(r)
+  }
+  return [...roots]
+}
+
+/** The global install dir where @deepseek-ai/dsh is (or would be) installed. */
 export async function dshInstallDir(): Promise<string | null> {
-  const root = await npmGlobalRoot()
-  if (!root) return null
-  const pkgJson = join(root, DSH_PKG_JSON_REL)
-  return existsSync(pkgJson) ? join(root, DSH_PKG_DIR) : null
+  for (const root of await candidateGlobalRoots()) {
+    const pkgJson = join(root, DSH_PKG_JSON_REL)
+    if (existsSync(pkgJson)) return join(root, DSH_PKG_DIR)
+  }
+  return null
 }
 
 /** Whether a usable dsh installation exists on this machine. */
 export async function isDshInstalled(): Promise<boolean> {
-  return (await dshInstallDir()) !== null
+  if (await dshInstallDir()) return true
+  // Fallback: any package manager (yarn, corepack, …) that put a `dsh` launcher
+  // on PATH counts as installed — the process manager boots it via that shim.
+  return (await findOnPath('dsh')) !== null
 }
 
 /**
