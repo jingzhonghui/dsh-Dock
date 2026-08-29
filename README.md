@@ -18,6 +18,7 @@ DeepSeek Harness（dsh）的跨平台桌面壳（wrapper）—— 一个"DSH 专
 - 内置浏览器窗口（Electron `WebContentsView`，与 DSH 官方测试的 Chromium 一致）；地址栏、前进/后退/刷新、DevTools（`Ctrl+Shift+I`）、缩放（`Ctrl+=` / `Ctrl+-` / `Ctrl+0`）。
 - 端点管理器：连接过的地址自动保存，可随时切换；默认本地地址可配置。
 - 由壳启动的本地 DSH 进程默认随壳退出而结束（避免孤儿进程）；可在设置中开启"保持运行"。
+- 边界情况：若壳被异常终止（任务管理器强制结束、崩溃、断电），正常退出清理不会执行，由壳启动的 DSH 可能残留为后台进程。重新打开壳通常会探测并重新连上它，也可在任务管理器中手动结束。
 - 持久会话（`persist:dsh` partition）：远程带登录的 DSH 无需反复登录。
 - 单实例锁：重复启动会聚焦已有窗口。
 - 跨平台：Windows / macOS / Linux（electron-builder 打包）。
