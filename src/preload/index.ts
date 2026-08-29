@@ -1,11 +1,14 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 
-import { IPC, type DshShellApi, type LogEntry, type Settings, type ShellState } from '../shared/ipc'
+import { IPC, type DshShellApi, type Settings, type ShellState } from '../shared/ipc'
 
 const api: DshShellApi = {
   getState: () => ipcRenderer.invoke(IPC.GetState),
   probe: (url: string) => ipcRenderer.invoke(IPC.Probe, url),
-  connect: (url: string) => ipcRenderer.invoke(IPC.Connect, url),
+  createTab: () => ipcRenderer.invoke(IPC.CreateTab),
+  closeTab: (id: string) => ipcRenderer.invoke(IPC.CloseTab, id),
+  switchTab: (id: string) => ipcRenderer.invoke(IPC.SwitchTab, id),
+  connectTab: (id: string, url: string) => ipcRenderer.invoke(IPC.ConnectTab, id, url),
   startLocal: () => ipcRenderer.invoke(IPC.StartLocal),
   stopLocal: () => ipcRenderer.invoke(IPC.StopLocal),
   installDsh: () => ipcRenderer.invoke(IPC.InstallDsh),
@@ -17,20 +20,12 @@ const api: DshShellApi = {
   setSettings: (settings: Settings) => ipcRenderer.invoke(IPC.SetSettings, settings),
   openExternal: (url: string) => ipcRenderer.invoke(IPC.OpenExternal, url),
   toggleDevTools: () => ipcRenderer.invoke(IPC.ToggleDevTools),
-  goBack: () => ipcRenderer.invoke(IPC.GoBack),
-  goForward: () => ipcRenderer.invoke(IPC.GoForward),
-  reload: () => ipcRenderer.invoke(IPC.Reload),
-  goHome: () => ipcRenderer.invoke(IPC.GoHome),
+  reloadTab: (id: string) => ipcRenderer.invoke(IPC.ReloadTab, id),
   setChromeHeight: (height: number) => ipcRenderer.invoke(IPC.SetChromeHeight, height),
   onStateChanged: (cb: (state: ShellState) => void) => {
     const listener = (_e: IpcRendererEvent, s: ShellState): void => cb(s)
     ipcRenderer.on(IPC.StateChanged, listener)
     return () => ipcRenderer.removeListener(IPC.StateChanged, listener)
-  },
-  onLog: (cb: (entry: LogEntry) => void) => {
-    const listener = (_e: IpcRendererEvent, entry: LogEntry): void => cb(entry)
-    ipcRenderer.on(IPC.Log, listener)
-    return () => ipcRenderer.removeListener(IPC.Log, listener)
   }
 }
 

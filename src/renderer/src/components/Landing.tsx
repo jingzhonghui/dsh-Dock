@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
-import type { Endpoint, LogEntry, ProbeResult, ShellState } from '@shared/ipc'
-import { LogPanel } from './LogPanel'
+import type { Endpoint, ProbeResult, ShellState, TabState } from '@shared/ipc'
 
 interface LandingProps {
   state: ShellState
-  logs: LogEntry[]
+  activeTab: TabState
 }
 
-export function Landing({ state, logs }: LandingProps): JSX.Element {
+export function Landing({ state, activeTab }: LandingProps): JSX.Element {
   const [installed, setInstalled] = useState<boolean | null>(state.installed ?? null)
   const [url, setUrl] = useState('')
   const [probe, setProbe] = useState<ProbeResult | null>(null)
@@ -36,7 +35,7 @@ export function Landing({ state, logs }: LandingProps): JSX.Element {
   const doConnect = async (target?: string): Promise<void> => {
     setError(null)
     try {
-      await window.dshShell.connect(target ?? url)
+      await window.dshShell.connectTab(activeTab.id, target ?? url)
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -144,8 +143,6 @@ export function Landing({ state, logs }: LandingProps): JSX.Element {
           ))}
         </section>
       </div>
-
-      <LogPanel logs={logs} />
     </div>
   )
 }
@@ -164,8 +161,6 @@ function busyLabel(state: ShellState): string {
       return '正在自动启动本机 DSH…'
     case 'starting':
       return '正在启动本机 DSH…'
-    case 'connecting':
-      return '正在连接…'
     default:
       return '处理中…'
   }

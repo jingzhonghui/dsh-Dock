@@ -8,7 +8,7 @@ import { DshProcessManager, isDshInstalled } from './localDsh'
 import { installDshGlobal } from './installer'
 import { EndpointStore } from './endpoints'
 import { SettingsStore } from './settings'
-import { ShellStateMachine } from './shellState'
+import { TabStore } from './tabs'
 
 const isDev = !!process.env['ELECTRON_RENDERER_URL']
 
@@ -23,14 +23,17 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 // ── stateful services ───────────────────────────────────────────────────────
-const state = new ShellStateMachine()
+const store = new TabStore()
 let endpoints: EndpointStore
 let settings: SettingsStore
 let manager: DshProcessManager
 let win: BrowserWindow | null = null
-let contentView: WebContentsView | null = null
-let contentAttached = false
-let chromeHeight = 48 // default chrome-bar height until the renderer reports the real one
+
+// One WebContentsView per connected tab; only the active tab's view is a child.
+const views = new Map<string, WebContentsView>()
+let attachedTabId: string | null = null
+
+let chromeHeight = 36 // default chrome-bar height until the renderer reports the real one
 let quitting = false
 let settingsCache: Settings = { keepDshRunning: false }
 
@@ -47,7 +50,7 @@ function sourceLabel(source: ConnectionSource): string {
       : '远程/手动'
 }
 
-function emitState(s: ShellState = state.snapshot()): void {
+function emitState(s: ShellState = store.snapshot()): void {
   win?.webContents.send(IPC.StateChanged, s)
 }
 
@@ -55,12 +58,12 @@ function pushDshOutput(chunk: string): void {
   let buffer = ''
   for (const line of (buffer + chunk).split(/\r?\n/)) {
     if (!line.trim()) continue
-    state.log({ source: 'dsh', level: 'info', text: line.trimEnd() })
+    store.log({ source: 'dsh', level: 'info', text: line.trimEnd() })
   }
 }
 
-// ── content view (the DSH page) ─────────────────────────────────────────────
-function createContentView(): WebContentsView {
+// ── content views (one per connected tab) ───────────────────────────────────
+function createView(tabId: string): WebContentsView {
   const view = new WebContentsView({
     webPreferences: {
       sandbox: true,
@@ -70,127 +73,177 @@ function createContentView(): WebContentsView {
       spellcheck: true
     }
   })
+  views.set(tabId, view)
 
   view.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
 
+  const onNavigated = (url: string): void => {
+    const tab = store.getTab(tabId)
+    if (tab && tab.phase === 'connected' && tab.url !== url) store.patchTab(tabId, { url })
+  }
   view.webContents.on('did-navigate', (_e, url) => onNavigated(url))
   view.webContents.on('did-navigate-in-page', (_e, url, isMainFrame) => {
     if (isMainFrame) onNavigated(url)
   })
 
+  view.webContents.on('page-title-updated', (_e, title) => {
+    store.patchTab(tabId, { title: title || undefined })
+  })
+
   view.webContents.on('did-fail-load', (_e, code, desc, _url, isMainFrame) => {
     if (!isMainFrame) return
     if (code === -3) return // ERR_ABORTED: user-initiated navigation/cancel
-    const s = state.snapshot()
-    if (s.phase === 'connected') {
-      state.log({ source: 'shell', level: 'error', text: `DSH 连接中断（${code} ${desc}）` })
-      setLanding('disconnected', `DSH 连接中断：${desc}`)
-    }
+    const tab = store.getTab(tabId)
+    if (!tab || (tab.phase !== 'connected' && tab.phase !== 'connecting')) return
+    const text = `DSH 连接中断（${code} ${desc}）`
+    store.patchTab(tabId, { phase: 'error', error: text })
+    store.log({ source: 'shell', level: 'error', text })
+    syncViews()
   })
 
   return view
 }
 
-function onNavigated(url: string): void {
-  const s = state.snapshot()
-  if (s.phase === 'connected' && s.connection && s.connection.url !== url) {
-    state.transition({ connection: { ...s.connection, url } })
+function destroyView(tabId: string): void {
+  const view = views.get(tabId)
+  if (!view) return
+  if (attachedTabId === tabId) {
+    win?.contentView.removeChildView(view)
+    attachedTabId = null
+  }
+  view.webContents.close()
+  views.delete(tabId)
+}
+
+/** Attach the active connected tab's view, detach everything else, and relayout. */
+function syncViews(): void {
+  if (!win) return
+  if (attachedTabId) {
+    const attached = views.get(attachedTabId)
+    if (attached) win.contentView.removeChildView(attached)
+    attachedTabId = null
+  }
+  const active = store.getTab(store.snapshot().activeTabId)
+  if (active?.phase === 'connected') {
+    const view = views.get(active.id)
+    if (view) {
+      win.contentView.addChildView(view)
+      attachedTabId = active.id
+    }
+  }
+  layout()
+}
+
+function layout(): void {
+  if (!win || !attachedTabId) return
+  const view = views.get(attachedTabId)
+  if (!view) return
+  const [width, height] = win.getContentSize()
+  // Start 1 DIP below the chrome bar: at fractional DPI scales the native view's
+  // top edge would otherwise round up and cover the bar's bottom pixel with the
+  // (dark) DSH page, showing a black hairline under the bar.
+  view.setBounds({ x: 0, y: chromeHeight + 1, width, height: Math.max(0, height - chromeHeight - 1) })
+}
+
+// ── connect / disconnect ────────────────────────────────────────────────────
+async function connectTab(tabId: string, rawUrl: string, source?: ConnectionSource): Promise<void> {
+  const url = normalizeUrl(rawUrl)
+  if (!url) throw new Error('URL 无效')
+
+  // Dedupe: if another tab already targets this URL, switch to it instead of
+  // opening a second connection. A fresh empty tab is closed in that case.
+  const existing = store.findTabByUrl(url, tabId)
+  if (existing) {
+    const tab = store.getTab(tabId)
+    if (tab && tab.phase === 'new') {
+      destroyView(tabId)
+      store.closeTab(tabId)
+    }
+    store.setActive(existing.id)
+    store.log({ source: 'shell', level: 'info', text: `已有标签页连接 ${url}，已切换过去。` })
+    syncViews()
+    emitState()
+    return
+  }
+
+  const resolvedSource = source ?? (isLoopback(url) ? 'local-external' : 'manual')
+  store.patchTab(tabId, { phase: 'connecting', url, error: undefined })
+  emitState()
+  try {
+    const probe = await probeEndpoint(url, 5000)
+    if (!probe.ok) throw new Error(`无法连接 ${url}：服务未响应。`)
+    if (!probe.isDsh) {
+      store.log({ source: 'shell', level: 'warn', text: `提示：${url} 未检测到 DSH 界面标记，可能不是 DeepSeek Harness。` })
+    }
+
+    const view = views.get(tabId) ?? createView(tabId)
+    store.patchTab(tabId, { phase: 'connected', url, source: resolvedSource, title: undefined })
+    syncViews()
+    await view.webContents.loadURL(url)
+    view.webContents.focus()
+    void endpoints.touchEndpoint(url)
+    store.log({ source: 'shell', level: 'info', text: `已连接 ${url}（${sourceLabel(resolvedSource)}）` })
+    debug('connectTab: connected', tabId, url)
+    emitState()
+  } catch (err) {
+    const message = errMsg(err)
+    store.patchTab(tabId, { phase: 'error', url, error: message })
+    store.log({ source: 'shell', level: 'error', text: `连接失败：${message}` })
+    syncViews()
     emitState()
   }
 }
 
-function attachContentView(): void {
-  if (!win || !contentView || contentAttached) return
-  win.contentView.addChildView(contentView)
-  contentAttached = true
-  layout()
-}
-
-function detachContentView(): void {
-  if (!win || !contentView || !contentAttached) return
-  win.contentView.removeChildView(contentView)
-  contentAttached = false
-}
-
-function layout(): void {
-  if (!win || !contentView || !contentAttached) return
-  const [width, height] = win.getContentSize()
-  contentView.setBounds({ x: 0, y: chromeHeight, width, height: Math.max(0, height - chromeHeight) })
-}
-
-// ── state transitions ───────────────────────────────────────────────────────
-function setLanding(reason: ShellState['landingReason'], message: string): void {
-  detachContentView()
-  state.transition({ phase: 'landing', busy: 'none', landingReason: reason, message, connection: undefined })
-  emitState()
-}
-
-async function connectTo(url: string, source: ConnectionSource): Promise<void> {
-  const probe = await probeEndpoint(url, 5000)
-  if (!probe.ok) throw new Error(`无法连接 ${url}：服务未响应。`)
-  if (!probe.isDsh) {
-    state.log({ source: 'shell', level: 'warn', text: `提示：${url} 未检测到 DSH 界面标记，可能不是 DeepSeek Harness。` })
-  }
-
-  state.transition({
-    phase: 'connected',
-    busy: 'none',
-    connection: { source, url },
-    landingReason: undefined,
-    message: undefined
-  })
-  attachContentView()
-  await contentView!.webContents.loadURL(url)
-  contentView!.webContents.focus()
-  void endpoints.touchEndpoint(url)
-  state.log({ source: 'shell', level: 'info', text: `已连接 ${url}（${sourceLabel(source)}）` })
-  debug('connectTo: connected to', url, `(${source})`)
-  emitState()
-}
-
 function handleDshExit(code: number | null, signal: NodeJS.Signals | null): void {
-  state.log({ source: 'dsh', level: 'error', text: `dsh 进程已退出（code=${code ?? 'null'} signal=${signal ?? 'null'}）` })
-  const s = state.snapshot()
-  if (s.phase === 'connected' && s.connection?.source === 'local-spawned') {
-    setLanding('disconnected', '本机 dsh 进程已退出，请重新启动或连接其他实例。')
+  store.log({ source: 'dsh', level: 'error', text: `dsh 进程已退出（code=${code ?? 'null'} signal=${signal ?? 'null'}）` })
+  // Mark every tab that used the shell-spawned instance as failed.
+  for (const t of store.snapshot().tabs) {
+    if (t.phase === 'connected' && t.source === 'local-spawned') {
+      store.patchTab(t.id, { phase: 'error', error: '本机 dsh 进程已退出，请重新启动或连接其他实例。' })
+    }
   }
+  syncViews()
+  emitState()
 }
 
-async function autoStart(): Promise<void> {
+async function autoStart(targetTabId: string): Promise<void> {
   try {
     const res = await manager.start({
       onOutput: pushDshOutput,
       onExit: handleDshExit
     })
     debug('autoStart: dsh ready at', res.url, 'alreadyRunning =', res.alreadyRunning)
-    await connectTo(res.url, res.alreadyRunning ? 'local-external' : 'local-spawned')
+    await connectTab(targetTabId, res.url, res.alreadyRunning ? 'local-external' : 'local-spawned')
   } catch (err) {
     const message = errMsg(err)
-    state.log({ source: 'shell', level: 'error', text: `启动失败：${message}` })
+    store.log({ source: 'shell', level: 'error', text: `启动失败：${message}` })
     debug('autoStart: FAILED ->', message)
-    setLanding('start-failed', message)
+    store.patchTab(targetTabId, { phase: 'landing' })
+    store.setGlobal({ landingReason: 'start-failed', message })
+    syncViews()
     emitState()
   }
 }
 
 // ── boot sequence ───────────────────────────────────────────────────────────
 async function boot(): Promise<void> {
-  state.transition({ phase: 'probing', busy: 'none' })
-  state.log({ source: 'shell', level: 'info', text: '正在检测本机 DSH…' })
+  const bootTab = store.createTab('boot')
+  store.setGlobal({ busy: 'none' })
+  store.log({ source: 'shell', level: 'info', text: '正在检测本机 DSH…' })
   emitState()
   debug('boot: probing local DSH')
 
-  const store = await endpoints.load()
+  const loaded = await endpoints.load()
   const candidates: string[] = []
   const push = (u?: string): void => {
     const n = normalizeUrl(u ?? '')
     if (n && !candidates.includes(n)) candidates.push(n)
   }
-  push(store.defaultLocalUrl)
-  const lastUsed = [...store.endpoints].sort((a, b) =>
+  push(loaded.defaultLocalUrl)
+  const lastUsed = [...loaded.endpoints].sort((a, b) =>
     (b.lastConnectedAt ?? '').localeCompare(a.lastConnectedAt ?? '')
   )[0]
   push(lastUsed?.url)
@@ -199,28 +252,30 @@ async function boot(): Promise<void> {
   for (const url of candidates) {
     const r = await probeEndpoint(url, 3000)
     if (r.ok && r.isDsh) {
-      state.log({ source: 'shell', level: 'info', text: `检测到 DSH 正在运行：${url}` })
+      store.log({ source: 'shell', level: 'info', text: `检测到 DSH 正在运行：${url}` })
       debug('boot: DSH already running at', url)
       try {
-        await connectTo(url, isLoopback(url) ? 'local-external' : 'manual')
+        await connectTab(bootTab.id, url)
         return
       } catch (err) {
-        state.log({ source: 'shell', level: 'warn', text: `连接 ${url} 失败：${errMsg(err)}` })
+        store.log({ source: 'shell', level: 'warn', text: `连接 ${url} 失败：${errMsg(err)}` })
       }
     }
   }
 
   if (await isDshInstalled()) {
-    state.log({ source: 'shell', level: 'info', text: 'DSH 已安装但未运行，正在自动启动…' })
+    store.log({ source: 'shell', level: 'info', text: 'DSH 已安装但未运行，正在自动启动…' })
     debug('boot: installed but not running -> auto-start')
-    state.transition({ busy: 'auto-starting' })
+    store.setGlobal({ busy: 'auto-starting' })
     emitState()
-    await autoStart()
+    await autoStart(bootTab.id)
     return
   }
 
   debug('boot: dsh not installed -> landing')
-  setLanding('not-installed', '未在本机检测到 dsh。你可以安装它，或连接一个远程 / WSL 上的实例。')
+  store.patchTab(bootTab.id, { phase: 'landing' })
+  store.setGlobal({ landingReason: 'not-installed', message: '未在本机检测到 dsh。你可以安装它，或连接一个远程 / WSL 上的实例。' })
+  emitState()
 }
 
 // ── IPC ─────────────────────────────────────────────────────────────────────
@@ -230,65 +285,88 @@ function registerIpc(): void {
     throw new Error('forbidden')
   }
 
-  ipcMain.handle(IPC.GetState, (e) => (guard(e) ? state.snapshot() : denied()))
+  ipcMain.handle(IPC.GetState, (e) => (guard(e) ? store.snapshot() : denied()))
   ipcMain.handle(IPC.Probe, async (e, url: string) => (guard(e) ? await probeEndpoint(url, 5000) : denied()))
   ipcMain.handle(IPC.IsInstalled, async (e) => (guard(e) ? await isDshInstalled() : denied()))
 
-  ipcMain.handle(IPC.Connect, async (e, rawUrl: string) => {
+  // ── tabs ──
+  ipcMain.handle(IPC.CreateTab, (e): ShellState => {
     if (!guard(e)) return denied()
-    const url = normalizeUrl(rawUrl)
-    if (!url) throw new Error('URL 无效')
-    state.transition({ busy: 'connecting' })
+    store.createTab('manual')
+    syncViews()
     emitState()
-    try {
-      await connectTo(url, isLoopback(url) ? 'local-external' : 'manual')
-    } catch (err) {
-      setLanding('probe-failed', errMsg(err))
-      emitState()
-    }
-    return state.snapshot()
+    return store.snapshot()
   })
 
-  ipcMain.handle(IPC.StartLocal, async (e) => {
+  ipcMain.handle(IPC.CloseTab, (e, id: string): ShellState => {
     if (!guard(e)) return denied()
-    if (state.snapshot().busy !== 'none') return state.snapshot()
-    state.transition({ busy: 'starting' })
+    destroyView(id)
+    store.closeTab(id)
+    syncViews()
     emitState()
-    await autoStart()
-    return state.snapshot()
+    return store.snapshot()
+  })
+
+  ipcMain.handle(IPC.SwitchTab, (e, id: string): ShellState => {
+    if (!guard(e)) return denied()
+    store.setActive(id)
+    syncViews()
+    emitState()
+    return store.snapshot()
+  })
+
+  ipcMain.handle(IPC.ConnectTab, async (e, id: string, rawUrl: string): Promise<ShellState> => {
+    if (!guard(e)) return denied()
+    await connectTab(id, rawUrl)
+    return store.snapshot()
+  })
+
+  // ── local / install ──
+  ipcMain.handle(IPC.StartLocal, async (e): Promise<ShellState> => {
+    if (!guard(e)) return denied()
+    const s = store.snapshot()
+    if (s.busy !== 'none') return s
+    const targetTabId = store.getTab(s.activeTabId)?.id ?? s.bootTabId
+    store.setGlobal({ busy: 'starting' })
+    emitState()
+    await autoStart(targetTabId)
+    return store.snapshot()
   })
 
   ipcMain.handle(IPC.StopLocal, async (e) => {
     if (!guard(e)) return denied()
     await manager.stop()
-    return state.snapshot()
+    return store.snapshot()
   })
 
   ipcMain.handle(IPC.InstallDsh, async (e) => {
     if (!guard(e)) return denied()
-    if (state.snapshot().busy !== 'none') return { ok: false, message: '已有任务进行中' }
-    state.transition({ busy: 'installing', message: '正在安装 dsh…' })
-    state.log({ source: 'shell', level: 'info', text: 'npm install -g @deepseek-ai/dsh@latest' })
+    if (store.snapshot().busy !== 'none') return { ok: false, message: '已有任务进行中' }
+    store.setGlobal({ busy: 'installing', message: '正在安装 dsh…' })
+    store.log({ source: 'shell', level: 'info', text: 'npm install -g @deepseek-ai/dsh@latest' })
     emitState()
 
     const res = await installDshGlobal({
-      onOutput: (line) => state.log({ source: 'npm', level: 'info', text: line })
+      onOutput: (line) => store.log({ source: 'npm', level: 'info', text: line })
     })
 
     if (res.ok) {
-      state.log({ source: 'npm', level: 'info', text: '安装成功，正在启动本机 DSH…' })
-      state.transition({ busy: 'auto-starting', message: '安装成功，正在启动本机 DSH…' })
+      store.log({ source: 'npm', level: 'info', text: '安装成功，正在启动本机 DSH…' })
+      store.setGlobal({ busy: 'auto-starting', message: '安装成功，正在启动本机 DSH…' })
       emitState()
-      await autoStart()
+      const s = store.snapshot()
+      const targetTabId = store.getTab(s.activeTabId)?.id ?? s.bootTabId
+      await autoStart(targetTabId)
       return { ok: true }
     }
     const message = res.hint ?? `npm 安装失败（exit code ${res.code ?? 'unknown'}）`
-    state.log({ source: 'npm', level: 'error', text: `安装失败：${message}` })
-    state.transition({ busy: 'none', message })
+    store.log({ source: 'npm', level: 'error', text: `安装失败：${message}` })
+    store.setGlobal({ busy: 'none', message })
     emitState()
     return { ok: false, message }
   })
 
+  // ── endpoints / settings ──
   ipcMain.handle(IPC.ListEndpoints, async (e): Promise<EndpointStoreData> => (guard(e) ? await endpoints.load() : denied()))
 
   ipcMain.handle(IPC.AddEndpoint, async (e, label: string, url: string): Promise<EndpointStoreData> => {
@@ -320,27 +398,18 @@ function registerIpc(): void {
     if (isAllowedUrl(url)) await shell.openExternal(url)
   })
 
+  // ── active tab chrome actions ──
   ipcMain.handle(IPC.ToggleDevTools, (e) => {
     if (!guard(e)) return denied()
-    if (contentView) contentView.webContents.toggleDevTools()
+    const id = store.snapshot().activeTabId
+    const view = views.get(id)
+    view?.webContents.toggleDevTools()
   })
 
-  ipcMain.handle(IPC.GoBack, (e) => {
+  ipcMain.handle(IPC.ReloadTab, (e, id: string) => {
     if (!guard(e)) return denied()
-    contentView?.webContents.navigationHistory.goBack()
-  })
-  ipcMain.handle(IPC.GoForward, (e) => {
-    if (!guard(e)) return denied()
-    contentView?.webContents.navigationHistory.goForward()
-  })
-  ipcMain.handle(IPC.Reload, (e) => {
-    if (!guard(e)) return denied()
-    contentView?.webContents.reload()
-  })
-  ipcMain.handle(IPC.GoHome, (e) => {
-    if (!guard(e)) return denied()
-    setLanding('user', '已断开连接。')
-    emitState()
+    const view = views.get(id)
+    view?.webContents.reload()
   })
 
   ipcMain.handle(IPC.SetChromeHeight, (e, height: number) => {
@@ -350,8 +419,8 @@ function registerIpc(): void {
   })
 
   // push events
-  state.onChange((s) => win?.webContents.send(IPC.StateChanged, s))
-  state.onLog((entry: LogEntry) => win?.webContents.send(IPC.Log, entry))
+  store.onChange((s) => win?.webContents.send(IPC.StateChanged, s))
+  store.onLog((entry: LogEntry) => win?.webContents.send(IPC.Log, entry))
 }
 
 // ── window & menu ───────────────────────────────────────────────────────────
@@ -362,8 +431,10 @@ function createWindow(): void {
     minWidth: 720,
     minHeight: 480,
     show: false,
+    autoHideMenuBar: true,
     title: 'DSH Desktop',
-    backgroundColor: '#0d1117',
+    backgroundColor: '#f6f7f9',
+    icon: join(__dirname, '../../resources/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -377,8 +448,6 @@ function createWindow(): void {
   win.on('closed', () => {
     win = null
   })
-
-  contentView = createContentView()
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     void win.loadURL(process.env['ELECTRON_RENDERER_URL'])

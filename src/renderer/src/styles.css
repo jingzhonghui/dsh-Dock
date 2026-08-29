@@ -1,16 +1,27 @@
+/* ── DSH Desktop — light theme tokens ─────────────────────────
+   Cool-neutral canvas, white surfaces, DeepSeek blue accent.
+   The chrome bar is the "browser frame"; everything below it is
+   calm, precise, and readable. */
 :root {
-  --bg: #0d1117;
-  --bg-elev: #161b22;
-  --bg-elev2: #1c2129;
-  --border: #2d333b;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #4c9aff;
-  --accent-hover: #66b0ff;
-  --danger: #f85149;
-  --ok: #3fb950;
-  --warn: #d29922;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef0f3;
+  --border: #e2e5ea;
+  --border-strong: #d3d7de;
+  --text: #1f2430;
+  --text-2: #5b6472;
+  --text-3: #8a93a2;
+  --accent: #4d6bfe;
+  --accent-hover: #3b54e0;
+  --accent-soft: rgba(77, 107, 254, 0.08);
+  --danger: #cf222e;
+  --danger-soft: rgba(207, 34, 46, 0.08);
+  --ok: #1a7f37;
+  --warn: #9a6700;
   --mono: 'Cascadia Code', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.05);
 }
 
 * {
@@ -42,16 +53,16 @@ textarea {
 button {
   font: inherit;
   color: var(--text);
-  background: var(--bg-elev2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
   padding: 6px 14px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 button:hover:not(:disabled) {
-  background: #262d37;
+  background: var(--surface-2);
 }
 
 button:disabled {
@@ -62,20 +73,30 @@ button:disabled {
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #04101f;
+  color: #fff;
   font-weight: 600;
 }
 
 button.primary:hover:not(:disabled) {
   background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 button.ghost {
   background: transparent;
+  border-color: transparent;
+}
+
+button.ghost:hover:not(:disabled) {
+  background: var(--surface-2);
 }
 
 button.danger {
   color: var(--danger);
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--danger-soft);
 }
 
 /* ── screens ─────────────────────────────────────────────── */
@@ -84,6 +105,9 @@ button.danger {
   height: 100%;
   display: flex;
   flex-direction: column;
+  /* Light like the chrome bar: the 1px seam between the DOM bar and the native
+     WebContentsView shows this background — dark body bg would appear as a black line. */
+  background: var(--bg);
 }
 
 .screen {
@@ -117,12 +141,13 @@ button.danger {
   font-size: 20px;
   letter-spacing: 1px;
   color: #fff;
-  box-shadow: 0 6px 24px rgba(76, 154, 255, 0.35);
+  box-shadow: 0 6px 20px rgba(77, 107, 254, 0.28);
 }
 
 h1 {
   margin: 0 0 6px;
   font-size: 26px;
+  letter-spacing: -0.01em;
 }
 
 h2 {
@@ -132,7 +157,7 @@ h2 {
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--text-2);
   margin: 6px 0;
 }
 
@@ -169,15 +194,14 @@ h2 {
   }
 }
 
-.probe-log {
-  width: min(760px, 100%);
-  text-align: left;
-}
-
 /* ── landing ─────────────────────────────────────────────── */
 
 .landing {
+  height: 100%;
   width: min(860px, 100%);
+  margin: 0 auto;
+  padding: 28px 16px 32px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -196,20 +220,21 @@ h2 {
 }
 
 .card {
-  background: var(--bg-elev);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  box-shadow: var(--shadow-sm);
 }
 
 .busy-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--muted);
+  color: var(--text-2);
 }
 
 .row {
@@ -220,16 +245,23 @@ h2 {
 .text-input {
   flex: 1;
   min-width: 0;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
   color: var(--text);
-  padding: 7px 10px;
+  padding: 8px 12px;
   font-size: 13px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.text-input::placeholder {
+  color: var(--text-3);
 }
 
 .text-input:focus {
-  outline: 1px solid var(--accent);
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .badge-line {
@@ -271,7 +303,7 @@ h2 {
 }
 
 .endpoint-url {
-  color: var(--muted);
+  color: var(--text-2);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -279,11 +311,35 @@ h2 {
 }
 
 .endpoint-time {
-  color: var(--muted);
+  color: var(--text-3);
   font-size: 11px;
 }
 
-/* ── chrome bar ──────────────────────────────────────────── */
+/* ── new tab page ────────────────────────────────────────── */
+
+.new-tab {
+  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.new-tab-row {
+  width: 100%;
+}
+
+.new-tab-row .text-input {
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.new-tab-row button.primary {
+  padding: 10px 18px;
+}
+
+/* ── chrome bar (the browser frame) ───────────────────────── */
 
 .chrome {
   flex: 0 0 auto;
@@ -291,164 +347,173 @@ h2 {
 
 .chrome-bar {
   display: flex;
+  align-items: stretch;
+  background: var(--bg);
+  height: 36px;
+}
+
+.tab-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px;
-  background: var(--bg-elev);
-  border-bottom: 1px solid var(--border);
-  height: 48px;
+  overflow-x: auto;
+  padding: 0 10px;
+  scrollbar-width: none;
+}
+
+.tab {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 140px;
+  max-width: 300px;
+  height: 26px;
+  padding: 0 8px 0 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s, color 0.12s;
+}
+
+.tab:hover {
+  background: #e3e6eb;
+  color: var(--text);
+}
+
+.tab.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.tab-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab .tab-badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 1px 6px;
+}
+
+.tab-refresh,
+.tab-close {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s;
+}
+
+.tab:hover .tab-refresh,
+.tab.active .tab-refresh,
+.tab:hover .tab-close,
+.tab.active .tab-close {
+  opacity: 1;
+}
+
+.tab-refresh:hover:not(:disabled),
+.tab-close:hover:not(:disabled) {
+  background: rgba(17, 24, 39, 0.08);
+  color: var(--text);
+}
+
+.tab-add {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tab-add:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.chrome-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  background: var(--bg);
+  overflow: hidden;
 }
 
 .icon-btn {
-  padding: 4px 10px;
-  font-size: 15px;
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  padding: 4px 8px;
+  font-size: 14px;
   line-height: 1;
+  border-radius: 6px;
 }
 
-.address {
-  flex: 1;
-  min-width: 0;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 999px;
+.icon-btn:hover:not(:disabled) {
+  background: var(--surface-2);
   color: var(--text);
-  padding: 6px 14px;
-  font-size: 13px;
-  font-family: var(--mono);
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
 }
 
 .badge {
   font-size: 11px;
-  padding: 3px 8px;
+  padding: 2px 8px;
   border-radius: 999px;
   white-space: nowrap;
-  border: 1px solid var(--border);
-  color: var(--muted);
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+  background: var(--surface);
 }
 
 .badge-local-external {
   color: var(--ok);
-  border-color: rgba(63, 185, 80, 0.4);
+  border-color: rgba(26, 127, 55, 0.35);
+  background: rgba(26, 127, 55, 0.06);
 }
 
 .badge-local-spawned {
   color: var(--accent);
-  border-color: rgba(76, 154, 255, 0.4);
+  border-color: rgba(77, 107, 254, 0.35);
+  background: var(--accent-soft);
 }
 
 .badge-manual {
   color: var(--warn);
-  border-color: rgba(210, 153, 34, 0.4);
-}
-
-.menu-wrap {
-  position: relative;
-}
-
-.menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  min-width: 280px;
-  max-width: 380px;
-  background: var(--bg-elev2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 6px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-  z-index: 100;
-}
-
-.menu-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  padding: 6px 10px 4px;
-}
-
-.menu-empty {
-  color: var(--muted);
-  font-size: 12px;
-  padding: 4px 10px 8px;
-}
-
-.menu-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  width: 100%;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  padding: 7px 10px;
-  text-align: left;
-}
-
-.menu-item:hover {
-  background: #262d37;
-}
-
-.menu-item-label {
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.menu-item-url {
-  color: var(--muted);
-  font-size: 11px;
-  font-family: var(--mono);
-  max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.menu-check {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.menu-check input {
-  accent-color: var(--accent);
-}
-
-.menu-sep {
-  height: 1px;
-  background: var(--border);
-  margin: 5px 0;
-}
-
-/* ── log panel ───────────────────────────────────────────── */
-
-.log-panel {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-elev);
-  overflow: hidden;
-}
-
-.log-panel summary {
-  cursor: pointer;
-  padding: 9px 14px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.log-box {
-  margin: 0;
-  padding: 10px 14px;
-  max-height: 260px;
-  overflow-y: auto;
-  background: #0a0d12;
-  color: #9fb0c3;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  word-break: break-all;
+  border-color: rgba(154, 103, 0, 0.35);
+  background: rgba(154, 103, 0, 0.06);
 }
