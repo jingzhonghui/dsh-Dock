@@ -12,22 +12,19 @@ npmRebuild: false
 win:
   target:
     - target: nsis
-      arch:
-        - x64
   icon: resources/icon.png
+  artifactName: ${productName}-V${version}-Windows-${env.ARCH_NAME}.${ext}
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
   shortcutName: DSHDock
-mac:
-  target:
-    - target: dmg
-      arch:
-        - arm64
-        - x64
-  category: public.app-category.developer-tools
-  icon: resources/icon.png
+# mac:
+#   target:
+#     - target: dmg
+#   category: public.app-category.developer-tools
+#   icon: resources/icon.png
+#   artifactName: ${productName}-V${version}-macOS-${env.ARCH_NAME}.${ext}
 linux:
   target:
     - AppImage
@@ -35,5 +32,6 @@ linux:
   icon: resources/icon.png
   category: Development
   maintainer: dsh-dock
+  artifactName: ${productName}-V${version}-Linux-${env.ARCH_NAME}.${ext}
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
