@@ -101,7 +101,7 @@ export function Landing({ state, activeTab }: LandingProps): JSX.Element {
   return (
     <div className="landing">
       <header className="hero" ref={heroRef}>
-        <img className="logo" src="/icon.png" alt="DSHDock" />
+        <img className="logo" src="./icon.png" alt="DSHDock" />
         <h1>DSHDock</h1>
         <p className="tagline">连接 DeepSeek Harness 的桌面入口</p>
         {error && <p className="error-text">{error}</p>}

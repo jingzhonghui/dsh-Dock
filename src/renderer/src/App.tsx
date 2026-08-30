@@ -65,7 +65,7 @@ function renderContent(state: ShellState, active: TabState | undefined): JSX.Ele
       return (
         <div className="screen">
           <div className="hero">
-            <img className="logo" src="/icon.png" alt="DSHDock" />
+            <img className="logo" src="./icon.png" alt="DSHDock" />
             <h1>DSHDock</h1>
             <p className="muted">{busyText(state)}</p>
           </div>

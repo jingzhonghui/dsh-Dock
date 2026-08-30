@@ -15,7 +15,7 @@ export function NewTabPage({ tab }: { tab: TabState }): JSX.Element {
   return (
     <div className="screen">
       <div className="new-tab">
-        <img className="logo" src="/icon.png" alt="DSHDock" />
+        <img className="logo" src="./icon.png" alt="DSHDock" />
         <h1>新标签页</h1>
         {isError ? (
           <p className="error-text">连接失败：{tab.error}</p>
