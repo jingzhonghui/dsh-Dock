@@ -9,7 +9,8 @@ DeepSeek Harness（dsh）的跨平台桌面壳（wrapper）—— 一个"DSH 专
 ![落地页](docs/preview-landing.png) 
 主页
 ![主页](docs/preview-home.png) 
-
+多标签
+![多标签](docs/tab.png) 
 > 主页展示的是连接前的"新标签页"界面；连接后的内容区为 DSH 官方界面。
 
 ## 启动行为
